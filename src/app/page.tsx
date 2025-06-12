@@ -67,8 +67,8 @@ function StatusBanner({
   return null;
 }
 
-function AwaitBanner({ firstQueryDone }: { firstQueryDone: boolean }) {
-  if (firstQueryDone) return null;
+function AwaitBanner({ show }: { show: boolean }) {
+  if (!show) return null;
   return (
     <div className="flex items-center justify-center h-full text-gray-500">
       Awaiting your info
@@ -86,13 +86,11 @@ export default function Home() {
   const [domain, setDomain]   = useState("");
 
   /* ---- chart / state ---- */
-  const [chartData, setChartData] = useState<MonthlyData[]>([]);
-  const [chartTitle, setChartTitle] = useState("");
-  const [keyword, setKeyword]     = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
-
-  const firstQueryDone = keyword !== "";
+  const [chartData,   setChartData]   = useState<MonthlyData[]>([]);
+  const [chartTitle,  setChartTitle]  = useState("");
+  const [keyword,     setKeyword]     = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
 
   /* ---- generic fetch ---- */
   async function run(
@@ -101,6 +99,10 @@ export default function Home() {
     title: string,
     label: string,
   ) {
+    /* set title/keyword immediately so UI updates during loading */
+    setChartTitle(title);
+    setKeyword(label);
+
     setLoading(true);
     setError(null);
     setChartData([]);
@@ -112,10 +114,9 @@ export default function Home() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+
       const json: ApiResponse = await res.json();
       setChartData(json.data);
-      setChartTitle(title);
-      setKeyword(label);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -215,7 +216,7 @@ export default function Home() {
                   <ThreatChart data={chartData} keyword={keyword} title={chartTitle} />
                 )}
 
-                <AwaitBanner firstQueryDone={firstQueryDone} />
+                <AwaitBanner show={keyword === ""} />
               </div>
             </div>
           </CardContent>
