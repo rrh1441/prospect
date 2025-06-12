@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Label,
 } from "recharts";
 import {
   Card,
@@ -19,21 +18,16 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  DownloadIcon,
-  ImageIcon,
-  ExternalLink,
-} from "lucide-react";
+import { DownloadIcon, ImageIcon } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
-/*                              Typing                                */
+/*                             Typing                                 */
 /* ------------------------------------------------------------------ */
 
 interface DataPoint {
-  date: string; // always "YYYY-MM"
+  date: string; // "YYYY-MM"
   count: number;
 }
-
 interface ThreatChartProps {
   data: DataPoint[];
   keyword?: string;
@@ -43,9 +37,7 @@ interface ThreatChartProps {
 /*                         Helper Components                          */
 /* ------------------------------------------------------------------ */
 
-/** Small label printed above each point. Props are optional because Recharts
- *  instantiates the element with {} at compile-time, then injects real props
- *  at runtime. */
+/** Point label – props optional because Recharts instantiates with {} first */
 type PointLabelProps = {
   x?: number;
   y?: number;
@@ -67,13 +59,10 @@ const PointLabel: React.FC<PointLabelProps> = ({ x, y, value }) =>
   ) : null;
 
 /** Convert "YYYY-MM" → "Jun 24" */
-const formatTick = (ym: string): string => {
+const fmtTick = (ym: string): string => {
   const [y, m] = ym.split("-");
   const d = new Date(Number(y), Number(m) - 1, 1);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    year: "2-digit",
-  });
+  return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 };
 
 /* ------------------------------------------------------------------ */
@@ -83,8 +72,8 @@ const formatTick = (ym: string): string => {
 export default function ThreatChart({ data, keyword }: ThreatChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
 
-  /* ------------- PNG export ------------- */
-  const exportPng = (): void => {
+  /* ---------- PNG export ---------- */
+  const exportPng = () => {
     const svg = chartRef.current?.querySelector("svg");
     if (!svg) return;
 
@@ -95,7 +84,6 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height + headerH;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -113,18 +101,18 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
     img.onload = () => {
       ctx.drawImage(img, 0, headerH);
       const png = canvas.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.download = "threat_chart.png";
-      link.href = png;
-      link.click();
+      const a = document.createElement("a");
+      a.download = "threat_chart.png";
+      a.href = png;
+      a.click();
     };
     img.src =
       "data:image/svg+xml;base64," +
       btoa(unescape(encodeURIComponent(svgString)));
   };
 
-  /* ------------- CSV export ------------- */
-  const exportCsv = (): void => {
+  /* ---------- CSV export ---------- */
+  const exportCsv = () => {
     const header = keyword ? `Keyword: ${keyword}\n` : "";
     const rows = data.map((r) => `${r.date},${r.count}`).join("\n");
     const blob = new Blob(
@@ -132,14 +120,14 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
       { type: "text/csv;charset=utf-8;" },
     );
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "threat_data.csv";
-    link.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "threat_data.csv";
+    a.click();
     URL.revokeObjectURL(url);
   };
 
-  /* ------------- Render ------------- */
+  /* ---------- render ---------- */
   return (
     <Card>
       <CardHeader>
@@ -147,9 +135,7 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
           Deep and Dark Web Mentions{" "}
           {keyword ? `for “${keyword}”` : ""}
         </CardTitle>
-        <CardDescription>
-          Monthly count over last 12 months
-        </CardDescription>
+        <CardDescription>Monthly count over last 12&nbsp;months</CardDescription>
       </CardHeader>
 
       <CardContent>
@@ -163,27 +149,14 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="date"
-                tickFormatter={formatTick}
+                tickFormatter={fmtTick}
                 angle={-45}
                 textAnchor="end"
                 interval={0}
                 dy={16}
                 padding={{ left: 20, right: 20 }}
-              >
-                <Label
-                  value="Date"
-                  offset={-5}
-                  position="insideBottom"
-                />
-              </XAxis>
-              <YAxis>
-                <Label
-                  value="Count"
-                  angle={-90}
-                  position="insideLeft"
-                  dy={-40}
-                />
-              </YAxis>
+              />
+              <YAxis />
               <Tooltip />
               <Line
                 type="monotone"
@@ -219,9 +192,8 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
           </Button>
 
           <Button
-            variant="link"
             asChild
-            className="text-orange-600 hover:text-orange-700 flex items-center gap-1"
+            className="bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
           >
             <a
               href="https://www.flashpoint.io/demo/"
@@ -229,7 +201,6 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
               rel="noopener noreferrer"
             >
               Do a Deep Dive
-              <ExternalLink className="h-4 w-4" />
             </a>
           </Button>
         </div>
