@@ -1,42 +1,61 @@
 import { NextResponse } from "next/server";
-import { Parser as JSON2CSVParser } from "json2csv";
 
-/**
- * Returns an array of 12 objects representing the last 12 full months (excluding the current month).
- * Each object contains:
- *  - start: ISO string for the first day of the month at 00:00:00Z
- *  - end: ISO string for the last day of the month at 23:59:59Z
- *  - label: A label in the form "YYYY-MM"
- */
-function getLast12MonthsExcludingCurrent(): { start: string; end: string; label: string }[] {
-  const months: { start: string; end: string; label: string }[] = [];
-  const now = new Date();
-  // Set current date to the first day of this month, at 00:00:00
-  now.setDate(1);
-  now.setHours(0, 0, 0, 0);
-  // Exclude the current month by starting with the previous month.
-  for (let i = 1; i <= 12; i++) {
-    const temp = new Date(now);
-    temp.setMonth(temp.getMonth() - i);
-    // Start of the month:
-    const startDate = new Date(temp.getFullYear(), temp.getMonth(), 1);
-    // End of the month:
-    const endDate = new Date(temp.getFullYear(), temp.getMonth() + 1, 0);
-    // Format as ISO date string (YYYY-MM-DD) with fixed times:
-    const start = startDate.toISOString().split("T")[0] + "T00:00:00Z";
-    const end = endDate.toISOString().split("T")[0] + "T23:59:59Z";
-    // Label as "YYYY-MM"
-    const label = startDate.toISOString().split("T")[0].slice(0, 7);
-    months.push({ start, end, label });
-  }
-  return months.reverse();
+interface MonthRange {
+  start: string;
+  end: string;
+  label: string;
+}
+
+interface ThreatApiPayload {
+  page: number;
+  size: number;
+  highlight: { enabled: boolean };
+  include_total: boolean;
+  query: string;
+  include: {
+    date: {
+      start: string;
+      end: string;
+    };
+  };
+}
+
+interface MonthlyResult {
+  date: string;
+  count: number;
 }
 
 /**
- * Constructs the payload for the API query.
- * This is the same as your daily payload but accepts arbitrary start/end dates.
+ * Get the last 12 full months (excluding the current month) in chronological order.
+ * Each entry contains ISO-formatted start/end boundaries and a YYYY-MM label.
  */
-function buildMonthlyPayload(keyword: string, start: string, end: string) {
+function getLast12MonthsExcludingCurrent(): MonthRange[] {
+  const months: MonthRange[] = [];
+  const now = new Date();
+
+  // Normalize to the first of the current month at 00:00:00.
+  now.setDate(1);
+  now.setHours(0, 0, 0, 0);
+
+  for (let i = 1; i <= 12; i += 1) {
+    const temp = new Date(now);
+    temp.setMonth(temp.getMonth() - i);
+
+    const startDate = new Date(temp.getFullYear(), temp.getMonth(), 1);
+    const endDate = new Date(temp.getFullYear(), temp.getMonth() + 1, 0);
+
+    const start = `${startDate.toISOString().split("T")[0]}T00:00:00Z`;
+    const end = `${endDate.toISOString().split("T")[0]}T23:59:59Z`;
+    const label = startDate.toISOString().slice(0, 7);
+
+    months.push({ start, end, label });
+  }
+
+  return months.reverse();
+}
+
+/** Build the Threat-API POST body for a single month. */
+function buildMonthlyPayload(keyword: string, start: string, end: string): ThreatApiPayload {
   return {
     page: 0,
     size: 0,
@@ -44,98 +63,62 @@ function buildMonthlyPayload(keyword: string, start: string, end: string) {
     include_total: true,
     query: keyword,
     include: {
-      date: {
-        start,
-        end,
-      },
+      date: { start, end },
     },
   };
 }
 
-/**
- * Calls your API for a given keyword and month (with start and end dates).
- * Returns the total count as a number.
- */
+/** Execute the Threat-API call and return the aggregated total. */
 async function fetchMonthlyTotal(keyword: string, start: string, end: string): Promise<number> {
   const payload = buildMonthlyPayload(keyword, start, end);
 
-  const apiResponse = await fetch(process.env.THREAT_API_URL as string, {
+  const apiResponse = await fetch(process.env.THREAT_API_URL ?? "", {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.THREAT_API_KEY}`,
+      Authorization: `Bearer ${process.env.THREAT_API_KEY ?? ""}`,
     },
     body: JSON.stringify(payload),
   });
 
   if (!apiResponse.ok) {
     const errorText = await apiResponse.text();
-    throw new Error(`Month ${start} to ${end} for keyword "${keyword}" => ${apiResponse.status}: ${errorText}`);
+    throw new Error(`Month ${start}–${end} for "${keyword}" ➜ ${apiResponse.status}: ${errorText}`);
   }
 
-  const data = await apiResponse.json();
-  return data?.total?.value ?? 0;
+  const data = (await apiResponse.json()) as { total?: { value?: number } };
+  return data.total?.value ?? 0;
 }
 
-/**
- * The POST handler for the monthly search endpoint.
- *
- * Expects a JSON POST with a { keyword } body.
- * Iterates over the last 12 months, calls the API for each month,
- * and builds a CSV where the header row uses the actual month labels.
- * A 250ms delay is applied between API calls.
- */
+/** POST /api/monthly-search */
 export async function POST(req: Request) {
   try {
-    const { keyword } = (await req.json()) || {};
+    const { keyword } = (await req.json()) as { keyword?: string };
+
     if (!keyword) {
-      return NextResponse.json({ error: "Missing 'keyword'" }, { status: 400 });
+      return NextResponse.json({ error: "Missing 'keyword' in request body." }, { status: 400 });
     }
 
     const months = getLast12MonthsExcludingCurrent();
-    // Build a single row with the keyword and monthly counts (using internal keys)
-    const resultRow: Record<string, number | string> = { keyword };
+    const monthlyResults: MonthlyResult[] = [];
 
-    for (let i = 0; i < months.length; i++) {
-      const { start, end, label } = months[i];
+    for (const { start, end, label } of months) {
       try {
         const count = await fetchMonthlyTotal(keyword, start, end);
-        resultRow[`month${i + 1}`] = count;
-      } catch (error) {
-        console.error(`Error processing keyword "${keyword}" for month ${label}:`, error);
-        resultRow[`month${i + 1}`] = 0;
+        monthlyResults.push({ date: label, count });
+      } catch (err) {
+        console.error(`Error fetching "${keyword}" for ${label}:`, err);
+        monthlyResults.push({ date: label, count: 0 });
       }
-      // 250ms delay to avoid rate limiting (adjust as needed)
+
+      // Throttle to avoid API-rate limits.
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    // Build CSV fields using the internal keys.
-    const fields = ["keyword", ...months.map((_, i) => `month${i + 1}`)];
-    const json2csvParser = new JSON2CSVParser({ fields });
-    const rawCsv = json2csvParser.parse([resultRow]);
-
-    // Post-process the CSV header: replace internal keys ("month1", "month2", etc.)
-    // with the actual month labels from the months array.
-    const csvLines = rawCsv.split("\n");
-    if (csvLines.length > 0) {
-      const headerColumns = csvLines[0].split(",");
-      for (let i = 0; i < months.length; i++) {
-        headerColumns[i + 1] = months[i].label;
-      }
-      csvLines[0] = headerColumns.join(",");
-    }
-    const finalCsv = csvLines.join("\n");
-
-    return new NextResponse(finalCsv, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/csv",
-        "Content-Disposition": 'attachment; filename="yearly_monthly_counts.csv"',
-      },
-    });
-  } catch (error) {
-    console.error("Monthly API Error:", error);
+    return NextResponse.json({ data: monthlyResults }, { status: 200 });
+  } catch (err) {
+    console.error("Monthly API Error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
