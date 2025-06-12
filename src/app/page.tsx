@@ -28,13 +28,12 @@ interface MonthlyData {
   date: string;
   count: number;
 }
-
 interface ApiResponse {
   data: MonthlyData[];
 }
 
-/* ───── helper components ───── */
-const StatusBanner = ({
+/* ───── helper banners ───── */
+function Status({
   loading,
   error,
   label,
@@ -42,168 +41,159 @@ const StatusBanner = ({
   loading: boolean;
   error: string | null;
   label: string;
-}) => {
+}) {
   if (loading) {
     return (
-      <div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg text-primary animate-pulse">
+      <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-lg text-orange-700 animate-pulse">
         <Loader2 className="h-5 w-5 animate-spin" />
-        <p className="font-medium">
-          Fetching data for “{label}”…
-        </p>
+        <p className="font-medium">Fetching data for “{label}”…</p>
       </div>
     );
   }
-
   if (error) {
     return (
-      <Alert variant="destructive" className="border border-destructive/20">
+      <Alert variant="destructive">
         <AlertTriangle className="h-5 w-5" />
-        <AlertTitle className="font-semibold">Error</AlertTitle>
+        <AlertTitle>Error</AlertTitle>
         <AlertDescription>{error}</AlertDescription>
       </Alert>
     );
   }
-
   return null;
-};
-
-const NoDataBanner = ({
-  loading,
-  error,
-}: {
-  loading: boolean;
-  error: string | null;
-}) =>
-  !loading && !error ? (
-    <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
-      <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-      <AlertTitle className="font-semibold text-blue-800 dark:text-blue-300">
-        No Data
-      </AlertTitle>
-      <AlertDescription className="text-blue-700 dark:text-blue-400">
-        Enter a company name or email domain and click one of the actions.
+}
+function NoData({ loading, error }: { loading: boolean; error: string | null }) {
+  if (loading || error) return null;
+  return (
+    <Alert className="bg-blue-50 border-blue-200">
+      <InfoIcon className="h-5 w-5 text-blue-600" />
+      <AlertTitle>No Data</AlertTitle>
+      <AlertDescription>
+        Enter a company name or email domain, then click an action.
       </AlertDescription>
     </Alert>
-  ) : null;
+  );
+}
 
 /* ───── main component ───── */
 export default function Home() {
-  const [input, setInput] = useState("");
+  /* inputs */
+  const [company, setCompany] = useState("");
+  const [domain, setDomain] = useState("");
 
-  const [chartData, setChartData] = useState<MonthlyData[]>([]);
+  /* chart state */
+  const [chartData, setChart] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentLabel, setCurrentLabel] = useState("");
+  const [label, setLabel] = useState("");
 
-  /* ─── generic fetch helper ─── */
-  const runQuery = async (path: string, body: Record<string, unknown>) => {
+  /* generic fetch helper */
+  async function run(path: string, body: Record<string, unknown>) {
     setLoading(true);
     setError(null);
-    setChartData([]);
-
+    setChart([]);
     try {
       const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
-
       const json: ApiResponse = await res.json();
-      setChartData(json.data);
+      setChart(json.data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  /* ─── button handlers ─── */
+  /* handlers */
   const handleMentions = () => {
-    if (!input) return;
-    setCurrentLabel(input);
-    runQuery("/api/monthly", { keyword: input });
+    if (!company) return;
+    setLabel(company);
+    run("/api/monthly", { keyword: company });
+  };
+  const handleCreds = () => {
+    if (!domain) return;
+    setLabel(domain);
+    run("/api/credentials", { domain });
   };
 
-  const handleCredentials = () => {
-    if (!input) return;
-    setCurrentLabel(input);
-    runQuery("/api/credentials", { domain: input });
-  };
-
-  /* ───── JSX ───── */
+  /* JSX */
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-12 px-4 sm:px-6 lg:px-8">
-      <Card className="max-w-7xl mx-auto border-0 shadow-lg dark:bg-slate-950">
-        {/* ─ header ─ */}
+    <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8">
+      <Card className="max-w-7xl mx-auto border-0 shadow-sm">
+        {/* header */}
         <CardHeader className="border-b pb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-full bg-primary/10 text-primary">
-              <BarChart3 className="h-6 w-6" />
+            <div className="p-2 rounded-full bg-gray-900 text-white">
+              <BarChart3 className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
+              <CardTitle className="text-3xl font-extrabold text-gray-800">
                 Threat Intelligence Dashboard
               </CardTitle>
-              <CardDescription className="text-muted-foreground">
+              <CardDescription className="text-gray-500">
                 Deep &amp; Dark Web Insights
               </CardDescription>
             </div>
           </div>
         </CardHeader>
 
-        {/* ─ content ─ */}
+        {/* content */}
         <CardContent className="p-0">
           <div className="flex flex-col lg:flex-row">
-            {/* left column 25 % */}
-            <div className="lg:w-1/4 w-full border-r p-6 space-y-6">
+            {/* left 25 % */}
+            <div className="lg:w-1/4 w-full p-6 space-y-6 border-r">
+              {/* company name */}
               <div className="space-y-2">
-                <label
-                  htmlFor="companyInput"
-                  className="block text-sm font-semibold"
-                >
-                  Company Name or Email Domain
+                <label className="block text-sm font-semibold">
+                  Company Name
                 </label>
                 <Input
-                  id="companyInput"
-                  placeholder="Flashpoint   |   flashpoint.io"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Flashpoint"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
                 />
+                <Button
+                  disabled={loading || !company}
+                  onClick={handleMentions}
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  Check Your Companyʼs Deep &amp; Dark Web Mentions
+                </Button>
               </div>
 
-              <Button
-                className="w-full"
-                onClick={handleMentions}
-                disabled={loading || !input}
-              >
-                Check Your Companyʼs Deep and Dark Web Mentions
-              </Button>
-
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={handleCredentials}
-                disabled={loading || !input}
-              >
-                Check Number of Exposed Employee Credentials
-              </Button>
+              {/* email domain */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold">
+                  Company Email Domain
+                </label>
+                <Input
+                  placeholder="flashpoint.io"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={loading || !domain}
+                  onClick={handleCreds}
+                  className="w-full bg-gray-900 hover:bg-gray-800 text-white"
+                >
+                  Check Number of Exposed Employee Credentials
+                </Button>
+              </div>
             </div>
 
-            {/* right column 75 % */}
+            {/* right 75 % */}
             <div className="lg:w-3/4 w-full p-6 space-y-6">
-              <StatusBanner
-                loading={loading}
-                error={error}
-                label={currentLabel}
-              />
+              <Status loading={loading} error={error} label={label} />
 
               {chartData.length > 0 && (
-                <ThreatChart data={chartData} keyword={currentLabel} />
+                <ThreatChart data={chartData} keyword={label} />
               )}
 
-              <NoDataBanner loading={loading} error={error} />
+              <NoData loading={loading} error={error} />
             </div>
           </div>
         </CardContent>
