@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardContent,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,7 @@ import {
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
-/*                             Typing                                 */
+/*                                Types                               */
 /* ------------------------------------------------------------------ */
 
 interface MonthlyData {
@@ -36,7 +35,7 @@ interface ApiResponse {
 }
 
 /* ------------------------------------------------------------------ */
-/*                         Helper Banners                             */
+/*                           Helper Banners                           */
 /* ------------------------------------------------------------------ */
 
 function StatusBanner({
@@ -78,24 +77,30 @@ function AwaitBanner({ firstQueryDone }: { firstQueryDone: boolean }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*                         Main Component                             */
+/*                           Main Component                           */
 /* ------------------------------------------------------------------ */
 
 export default function Home() {
-  /* form inputs */
+  /* ---- inputs ---- */
   const [company, setCompany] = useState("");
-  const [domain, setDomain] = useState("");
+  const [domain, setDomain]   = useState("");
 
-  /* chart + state */
+  /* ---- chart / state ---- */
   const [chartData, setChartData] = useState<MonthlyData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [label, setLabel] = useState("");
+  const [chartTitle, setChartTitle] = useState("");
+  const [keyword, setKeyword]     = useState("");
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
 
-  const firstQueryDone = label !== "";
+  const firstQueryDone = keyword !== "";
 
-  /* generic fetch */
-  async function run(path: string, body: Record<string, unknown>) {
+  /* ---- generic fetch ---- */
+  async function run(
+    path: string,
+    body: Record<string, unknown>,
+    title: string,
+    label: string,
+  ) {
     setLoading(true);
     setError(null);
     setChartData([]);
@@ -109,6 +114,8 @@ export default function Home() {
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
       const json: ApiResponse = await res.json();
       setChartData(json.data);
+      setChartTitle(title);
+      setKeyword(label);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -116,21 +123,29 @@ export default function Home() {
     }
   }
 
-  /* handlers */
+  /* ---- handlers ---- */
   const handleMentions = () => {
     if (!company) return;
-    setLabel(company);
-    run("/api/monthly", { keyword: company });
+    run(
+      "/api/monthly",
+      { keyword: company },
+      `Deep and Dark Web Mentions for “${company}”`,
+      company,
+    );
   };
 
   const handleCreds = () => {
     if (!domain) return;
-    setLabel(domain);
-    run("/api/credentials", { domain });
+    run(
+      "/api/credentials",
+      { domain },
+      `Exposed Employee Credentials for “${domain}”`,
+      domain,
+    );
   };
 
   /* ------------------------------------------------------------------ */
-  /*                               JSX                                 */
+  /*                                JSX                                */
   /* ------------------------------------------------------------------ */
   return (
     <>
@@ -146,11 +161,9 @@ export default function Home() {
               <div className="p-2 rounded-full bg-gray-900 text-white">
                 <BarChart3 className="h-5 w-5" />
               </div>
-              <div>
-                <CardTitle className="text-3xl font-extrabold text-gray-800">
-                  See Your Company’s Exposure
-                </CardTitle>
-              </div>
+              <CardTitle className="text-3xl font-extrabold text-gray-800">
+                See Your Company’s Exposure
+              </CardTitle>
             </div>
           </CardHeader>
 
@@ -161,9 +174,7 @@ export default function Home() {
               <div className="lg:w-1/3 w-full p-6 space-y-6 border-r">
                 {/* company name */}
                 <div className="space-y-2">
-                  <label className="block text-sm font-semibold">
-                    Company Name
-                  </label>
+                  <label className="block text-sm font-semibold">Company Name</label>
                   <Input
                     placeholder="Flashpoint"
                     value={company}
@@ -180,9 +191,7 @@ export default function Home() {
 
                 {/* email domain */}
                 <div className="space-y-2">
-                  <label className="block text-sm font-semibold">
-                    Company Email Domain
-                  </label>
+                  <label className="block text-sm font-semibold">Company Email Domain</label>
                   <Input
                     placeholder="flashpoint.io"
                     value={domain}
@@ -200,10 +209,10 @@ export default function Home() {
 
               {/* right 66 % */}
               <div className="lg:w-2/3 w-full p-6 space-y-6 min-h-[420px]">
-                <StatusBanner loading={loading} error={error} label={label} />
+                <StatusBanner loading={loading} error={error} label={keyword} />
 
                 {chartData.length > 0 && !loading && (
-                  <ThreatChart data={chartData} keyword={label} />
+                  <ThreatChart data={chartData} keyword={keyword} title={chartTitle} />
                 )}
 
                 <AwaitBanner firstQueryDone={firstQueryDone} />

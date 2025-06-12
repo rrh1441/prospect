@@ -30,14 +30,14 @@ interface DataPoint {
 }
 interface ThreatChartProps {
   data: DataPoint[];
-  keyword?: string;
+  keyword: string;
+  title: string;
 }
 
 /* ------------------------------------------------------------------ */
 /*                         Helper Components                          */
 /* ------------------------------------------------------------------ */
 
-/** Point label – props optional because Recharts instantiates with {} first */
 type PointLabelProps = {
   x?: number;
   y?: number;
@@ -46,19 +46,11 @@ type PointLabelProps = {
 
 const PointLabel: React.FC<PointLabelProps> = ({ x, y, value }) =>
   x !== undefined && y !== undefined ? (
-    <text
-      x={x}
-      y={y}
-      dy={-8}
-      fill="#000"
-      fontSize={12}
-      textAnchor="middle"
-    >
+    <text x={x} y={y} dy={-8} fill="#000" fontSize={12} textAnchor="middle">
       {value}
     </text>
   ) : null;
 
-/** Convert "YYYY-MM" → "Jun 24" */
 const fmtTick = (ym: string): string => {
   const [y, m] = ym.split("-");
   const d = new Date(Number(y), Number(m) - 1, 1);
@@ -69,15 +61,15 @@ const fmtTick = (ym: string): string => {
 /*                          Main Component                            */
 /* ------------------------------------------------------------------ */
 
-export default function ThreatChart({ data, keyword }: ThreatChartProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
+export default function ThreatChart({ data, keyword, title }: ThreatChartProps) {
+  const ref = useRef<HTMLDivElement>(null);
 
   /* ---------- PNG export ---------- */
   const exportPng = () => {
-    const svg = chartRef.current?.querySelector("svg");
+    const svg = ref.current?.querySelector("svg");
     if (!svg) return;
 
-    const svgString = new XMLSerializer().serializeToString(svg);
+    const svgStr = new XMLSerializer().serializeToString(svg);
     const { width, height } = svg.getBoundingClientRect();
     const headerH = 40;
 
@@ -107,18 +99,16 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
       a.click();
     };
     img.src =
-      "data:image/svg+xml;base64," +
-      btoa(unescape(encodeURIComponent(svgString)));
+      "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgStr)));
   };
 
   /* ---------- CSV export ---------- */
   const exportCsv = () => {
     const header = keyword ? `Keyword: ${keyword}\n` : "";
     const rows = data.map((r) => `${r.date},${r.count}`).join("\n");
-    const blob = new Blob(
-      [`${header}Date,Count\n${rows}`],
-      { type: "text/csv;charset=utf-8;" },
-    );
+    const blob = new Blob([`${header}Date,Count\n${rows}`], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -131,16 +121,12 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          Deep and Dark Web Mentions{" "}
-          {keyword ? `for “${keyword}”` : ""}
-        </CardTitle>
+        <CardTitle>{title}</CardTitle>
         <CardDescription>Monthly count over last 12&nbsp;months</CardDescription>
       </CardHeader>
 
       <CardContent>
-        {/* Chart */}
-        <div ref={chartRef} className="h-[400px]">
+        <div ref={ref} className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={data}
@@ -171,26 +157,13 @@ export default function ThreatChart({ data, keyword }: ThreatChartProps) {
           </ResponsiveContainer>
         </div>
 
-        {/* Actions */}
         <div className="mt-4 flex flex-wrap gap-2 justify-end">
-          <Button
-            variant="outline"
-            onClick={exportPng}
-            className="flex items-center gap-2"
-          >
-            <ImageIcon className="h-4 w-4" />
-            Export as PNG
+          <Button variant="outline" onClick={exportPng} className="flex items-center gap-2">
+            <ImageIcon className="h-4 w-4" /> Export as PNG
           </Button>
-
-          <Button
-            variant="outline"
-            onClick={exportCsv}
-            className="flex items-center gap-2"
-          >
-            <DownloadIcon className="h-4 w-4" />
-            Export as CSV
+          <Button variant="outline" onClick={exportCsv} className="flex items-center gap-2">
+            <DownloadIcon className="h-4 w-4" /> Export as CSV
           </Button>
-
           <Button
             asChild
             className="bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
