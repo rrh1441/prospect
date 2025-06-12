@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Head from "next/head";
 import ThreatChart from "@/components/ThreatChart";
 import {
   Card,
@@ -19,15 +20,12 @@ import {
 import {
   Loader2,
   AlertTriangle,
-  InfoIcon,
   BarChart3,
 } from "lucide-react";
-import { Metadata } from "next";
 
-/* ───── page metadata ───── */
-export const metadata: Metadata = {
-  title: "See Your Company's Exposure",
-};
+/* ------------------------------------------------------------------ */
+/*                             Typing                                 */
+/* ------------------------------------------------------------------ */
 
 interface MonthlyData {
   date: string;
@@ -37,7 +35,10 @@ interface ApiResponse {
   data: MonthlyData[];
 }
 
-/* ───── banners ───── */
+/* ------------------------------------------------------------------ */
+/*                         Helper Banners                             */
+/* ------------------------------------------------------------------ */
+
 function StatusBanner({
   loading,
   error,
@@ -70,13 +71,16 @@ function StatusBanner({
 function AwaitBanner({ firstQueryDone }: { firstQueryDone: boolean }) {
   if (firstQueryDone) return null;
   return (
-    <div className="flex flex-col items-center justify-center h-full text-gray-500">
+    <div className="flex items-center justify-center h-full text-gray-500">
       Awaiting your info
     </div>
   );
 }
 
-/* ───── main component ───── */
+/* ------------------------------------------------------------------ */
+/*                         Main Component                             */
+/* ------------------------------------------------------------------ */
+
 export default function Home() {
   /* form inputs */
   const [company, setCompany] = useState("");
@@ -125,78 +129,92 @@ export default function Home() {
     run("/api/credentials", { domain });
   };
 
-  /* ───── JSX ───── */
+  /* ------------------------------------------------------------------ */
+  /*                               JSX                                 */
+  /* ------------------------------------------------------------------ */
   return (
-    <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8">
-      <Card className="max-w-7xl mx-auto border-0 shadow-sm">
-        {/* header */}
-        <CardHeader className="border-b pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-full bg-gray-900 text-white">
-              <BarChart3 className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle className="text-3xl font-extrabold text-gray-800">
-                See Your Company’s Exposure
-              </CardTitle>
-              <CardDescription className="text-gray-500">
-                Deep &amp; Dark Web Insights
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
+    <>
+      <Head>
+        <title>See Your Company&#39;s Exposure</title>
+      </Head>
 
-        {/* content */}
-        <CardContent className="p-0">
-          <div className="flex flex-col lg:flex-row">
-            {/* left 33 % */}
-            <div className="lg:w-1/3 w-full p-6 space-y-6 border-r">
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold">Company Name</label>
-                <Input
-                  placeholder="Flashpoint"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                />
-                <Button
-                  disabled={loading || !company}
-                  onClick={handleMentions}
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-                >
-                  Check Your Companyʼs Deep &amp; Dark Web Mentions
-                </Button>
+      <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8">
+        <Card className="max-w-7xl mx-auto border-0 shadow-sm">
+          {/* header */}
+          <CardHeader className="border-b pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-gray-900 text-white">
+                <BarChart3 className="h-5 w-5" />
               </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold">Company Email Domain</label>
-                <Input
-                  placeholder="flashpoint.io"
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                />
-                <Button
-                  disabled={loading || !domain}
-                  onClick={handleCreds}
-                  className="w-full bg-gray-900 hover:bg-gray-800 text-white"
-                >
-                  Check Number of Exposed Employee Credentials
-                </Button>
+              <div>
+                <CardTitle className="text-3xl font-extrabold text-gray-800">
+                  See Your Company’s Exposure
+                </CardTitle>
+                <CardDescription className="text-gray-500">
+                  Deep &amp; Dark Web Insights
+                </CardDescription>
               </div>
             </div>
+          </CardHeader>
 
-            {/* right 66 % */}
-            <div className="lg:w-2/3 w-full p-6 space-y-6 min-h-[420px]">
-              <StatusBanner loading={loading} error={error} label={label} />
+          {/* content */}
+          <CardContent className="p-0">
+            <div className="flex flex-col lg:flex-row">
+              {/* left 33 % */}
+              <div className="lg:w-1/3 w-full p-6 space-y-6 border-r">
+                {/* company name */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold">
+                    Company Name
+                  </label>
+                  <Input
+                    placeholder="Flashpoint"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                  />
+                  <Button
+                    disabled={loading || !company}
+                    onClick={handleMentions}
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                  >
+                    Check Your Companyʼs Deep &amp; Dark Web Mentions
+                  </Button>
+                </div>
 
-              {chartData.length > 0 && !loading && (
-                <ThreatChart data={chartData} keyword={label} />
-              )}
+                {/* email domain */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold">
+                    Company Email Domain
+                  </label>
+                  <Input
+                    placeholder="flashpoint.io"
+                    value={domain}
+                    onChange={(e) => setDomain(e.target.value)}
+                  />
+                  <Button
+                    disabled={loading || !domain}
+                    onClick={handleCreds}
+                    className="w-full bg-gray-900 hover:bg-gray-800 text-white"
+                  >
+                    Check Number of Exposed Employee Credentials
+                  </Button>
+                </div>
+              </div>
 
-              <AwaitBanner firstQueryDone={firstQueryDone} />
+              {/* right 66 % */}
+              <div className="lg:w-2/3 w-full p-6 space-y-6 min-h-[420px]">
+                <StatusBanner loading={loading} error={error} label={label} />
+
+                {chartData.length > 0 && !loading && (
+                  <ThreatChart data={chartData} keyword={label} />
+                )}
+
+                <AwaitBanner firstQueryDone={firstQueryDone} />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
