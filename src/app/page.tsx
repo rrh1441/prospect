@@ -1,35 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import QueryForm from "@/components/QueryForm";
 import ThreatChart from "@/components/ThreatChart";
 import {
   Card,
   CardHeader,
+  CardContent,
   CardTitle,
   CardDescription,
-  CardContent,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Alert,
   AlertTitle,
   AlertDescription,
 } from "@/components/ui/alert";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
-  BarChart3,
-  InfoIcon,
-  AlertTriangle,
   Loader2,
+  AlertTriangle,
+  InfoIcon,
+  BarChart3,
 } from "lucide-react";
 
+/* ───── types ───── */
 interface MonthlyData {
-  date: string; // YYYY-MM
+  date: string;
   count: number;
 }
 
@@ -37,218 +33,181 @@ interface ApiResponse {
   data: MonthlyData[];
 }
 
-type TabKey = "keyword" | "credentials";
+/* ───── helper components ───── */
+const StatusBanner = ({
+  loading,
+  error,
+  label,
+}: {
+  loading: boolean;
+  error: string | null;
+  label: string;
+}) => {
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg text-primary animate-pulse">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <p className="font-medium">
+          Fetching data for “{label}”…
+        </p>
+      </div>
+    );
+  }
 
+  if (error) {
+    return (
+      <Alert variant="destructive" className="border border-destructive/20">
+        <AlertTriangle className="h-5 w-5" />
+        <AlertTitle className="font-semibold">Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  return null;
+};
+
+const NoDataBanner = ({
+  loading,
+  error,
+}: {
+  loading: boolean;
+  error: string | null;
+}) =>
+  !loading && !error ? (
+    <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+      <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+      <AlertTitle className="font-semibold text-blue-800 dark:text-blue-300">
+        No Data
+      </AlertTitle>
+      <AlertDescription className="text-blue-700 dark:text-blue-400">
+        Enter a company name or email domain and click one of the actions.
+      </AlertDescription>
+    </Alert>
+  ) : null;
+
+/* ───── main component ───── */
 export default function Home() {
-  /* ------------------------------------------------------------------
-   * Generic tab state
-   * ------------------------------------------------------------------ */
-  const [activeTab, setActiveTab] = useState<TabKey>("keyword");
+  const [input, setInput] = useState("");
 
-  /* ------------------------------------------------------------------
-   * Keyword tab state
-   * ------------------------------------------------------------------ */
-  const [kwChartData, setKwChartData] = useState<MonthlyData[]>([]);
-  const [kwLoading, setKwLoading] = useState<boolean>(false);
-  const [kwError, setKwError] = useState<string | null>(null);
-  const [currentKeyword, setCurrentKeyword] = useState<string>("");
+  const [chartData, setChartData] = useState<MonthlyData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentLabel, setCurrentLabel] = useState("");
 
-  /* ------------------------------------------------------------------
-   * Credentials tab state
-   * ------------------------------------------------------------------ */
-  const [credChartData, setCredChartData] = useState<MonthlyData[]>([]);
-  const [credLoading, setCredLoading] = useState<boolean>(false);
-  const [credError, setCredError] = useState<string | null>(null);
-  const [currentDomain, setCurrentDomain] = useState<string>("");
-
-  /* ------------------------------------------------------------------
-   * Handlers
-   * ------------------------------------------------------------------ */
-  const handleKeywordSearch = async ({
-    keyword,
-  }: {
-    keyword: string;
-  }): Promise<void> => {
-    setCurrentKeyword(keyword);
-    setKwLoading(true);
-    setKwError(null);
-    setKwChartData([]);
+  /* ─── generic fetch helper ─── */
+  const runQuery = async (path: string, body: Record<string, unknown>) => {
+    setLoading(true);
+    setError(null);
+    setChartData([]);
 
     try {
-      const res = await fetch("/api/monthly", {
+      const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword }),
+        body: JSON.stringify(body),
       });
 
-      if (!res.ok) {
-        throw new Error(`Failed to fetch keyword data (status ${res.status}).`);
-      }
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
 
       const json: ApiResponse = await res.json();
-      setKwChartData(json.data);
-    } catch (err: unknown) {
-      setKwError(err instanceof Error ? err.message : "Unknown error.");
+      setChartData(json.data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setKwLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleCredentialSearch = async ({
-    keyword: domain,
-  }: {
-    keyword: string; // QueryForm still returns { keyword }
-  }): Promise<void> => {
-    setCurrentDomain(domain);
-    setCredLoading(true);
-    setCredError(null);
-    setCredChartData([]);
-
-    try {
-      const res = await fetch("/api/credentials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain }),
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Failed to fetch credential data (status ${res.status}).`,
-        );
-      }
-
-      const json: ApiResponse = await res.json();
-      setCredChartData(json.data);
-    } catch (err: unknown) {
-      setCredError(err instanceof Error ? err.message : "Unknown error.");
-    } finally {
-      setCredLoading(false);
-    }
+  /* ─── button handlers ─── */
+  const handleMentions = () => {
+    if (!input) return;
+    setCurrentLabel(input);
+    runQuery("/api/monthly", { keyword: input });
   };
 
-  /* ------------------------------------------------------------------
-   * Render helpers
-   * ------------------------------------------------------------------ */
-  const renderStatus = (
-    loading: boolean,
-    error: string | null,
-    queryLabel: string,
-  ) => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center space-x-3 text-primary p-4 bg-primary/5 rounded-lg border border-primary/20 animate-pulse">
-          <Loader2 className="animate-spin h-5 w-5" />
-          <p className="font-medium">Fetching data for “{queryLabel}”…</p>
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <Alert variant="destructive" className="border border-destructive/20">
-          <AlertTriangle className="h-5 w-5" />
-          <AlertTitle className="font-semibold">Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      );
-    }
-
-    return null;
+  const handleCredentials = () => {
+    if (!input) return;
+    setCurrentLabel(input);
+    runQuery("/api/credentials", { domain: input });
   };
 
-  const renderNoData = (loading: boolean, error: string | null) => {
-    if (!loading && !error) {
-      return (
-        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
-          <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-          <AlertTitle className="font-semibold text-blue-800 dark:text-blue-300">
-            No Data
-          </AlertTitle>
-          <AlertDescription className="text-blue-700 dark:text-blue-400">
-            Submit a query above to retrieve the last 12 months of results.
-          </AlertDescription>
-        </Alert>
-      );
-    }
-    return null;
-  };
-
-  /* ------------------------------------------------------------------
-   * Main JSX
-   * ------------------------------------------------------------------ */
+  /* ───── JSX ───── */
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto">
-        <Card className="border-0 shadow-lg dark:bg-slate-950">
-          {/* ───────── Header ───────── */}
-          <CardHeader className="pb-4 border-b">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-primary/10 text-primary">
-                <BarChart3 className="h-6 w-6" />
-              </div>
-              <div>
-                <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
-                  Threat Intelligence Dashboard
-                </CardTitle>
-                <CardDescription className="text-muted-foreground">
-                  Monthly Deep &amp; Dark Web Results
-                </CardDescription>
-              </div>
+      <Card className="max-w-7xl mx-auto border-0 shadow-lg dark:bg-slate-950">
+        {/* ─ header ─ */}
+        <CardHeader className="border-b pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-full bg-primary/10 text-primary">
+              <BarChart3 className="h-6 w-6" />
             </div>
-          </CardHeader>
+            <div>
+              <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
+                Threat Intelligence Dashboard
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Deep &amp; Dark Web Insights
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
 
-          {/* ───────── Content ───────── */}
-          <CardContent className="p-6">
-            <Tabs
-              defaultValue="keyword"
-              value={activeTab}
-              onValueChange={(val) => setActiveTab(val as TabKey)}
-              className="w-full"
-            >
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="keyword">Keyword</TabsTrigger>
-                <TabsTrigger value="credentials">Credentials</TabsTrigger>
-              </TabsList>
+        {/* ─ content ─ */}
+        <CardContent className="p-0">
+          <div className="flex flex-col lg:flex-row">
+            {/* left column 25 % */}
+            <div className="lg:w-1/4 w-full border-r p-6 space-y-6">
+              <div className="space-y-2">
+                <label
+                  htmlFor="companyInput"
+                  className="block text-sm font-semibold"
+                >
+                  Company Name or Email Domain
+                </label>
+                <Input
+                  id="companyInput"
+                  placeholder="Flashpoint   |   flashpoint.io"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                />
+              </div>
 
-              {/* ─────── Keyword Tab ─────── */}
-              <TabsContent value="keyword" className="space-y-6">
-                <div className="bg-card rounded-lg p-4 border shadow-sm">
-                  <QueryForm
-                    onSubmit={handleKeywordSearch}
-                    placeholder="Enter keyword..."
-                  />
-                </div>
+              <Button
+                className="w-full"
+                onClick={handleMentions}
+                disabled={loading || !input}
+              >
+                Check Your Companyʼs Deep and Dark Web Mentions
+              </Button>
 
-                {renderStatus(kwLoading, kwError, currentKeyword)}
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={handleCredentials}
+                disabled={loading || !input}
+              >
+                Check Number of Exposed Employee Credentials
+              </Button>
+            </div>
 
-                {kwChartData.length > 0 && (
-                  <ThreatChart data={kwChartData} keyword={currentKeyword} />
-                )}
+            {/* right column 75 % */}
+            <div className="lg:w-3/4 w-full p-6 space-y-6">
+              <StatusBanner
+                loading={loading}
+                error={error}
+                label={currentLabel}
+              />
 
-                {renderNoData(kwLoading, kwError)}
-              </TabsContent>
+              {chartData.length > 0 && (
+                <ThreatChart data={chartData} keyword={currentLabel} />
+              )}
 
-              {/* ─────── Credentials Tab ─────── */}
-              <TabsContent value="credentials" className="space-y-6">
-                <div className="bg-card rounded-lg p-4 border shadow-sm">
-                  <QueryForm
-                    onSubmit={handleCredentialSearch}
-                    placeholder="Enter email domain (e.g., example.com)…"
-                  />
-                </div>
-
-                {renderStatus(credLoading, credError, currentDomain)}
-
-                {credChartData.length > 0 && (
-                  <ThreatChart data={credChartData} keyword={currentDomain} />
-                )}
-
-                {renderNoData(credLoading, credError)}
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+              <NoDataBanner loading={loading} error={error} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
