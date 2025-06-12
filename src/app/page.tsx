@@ -22,8 +22,13 @@ import {
   InfoIcon,
   BarChart3,
 } from "lucide-react";
+import { Metadata } from "next";
 
-/* ───── types ───── */
+/* ───── page metadata ───── */
+export const metadata: Metadata = {
+  title: "See Your Company's Exposure",
+};
+
 interface MonthlyData {
   date: string;
   count: number;
@@ -32,7 +37,7 @@ interface ApiResponse {
   data: MonthlyData[];
 }
 
-/* ───── helper banners ───── */
+/* ───── banners ───── */
 function StatusBanner({
   loading,
   error,
@@ -42,15 +47,15 @@ function StatusBanner({
   error: string | null;
   label: string;
 }) {
-  if (loading) {
+  if (loading)
     return (
       <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-lg text-orange-700 animate-pulse">
         <Loader2 className="h-5 w-5 animate-spin" />
         <p className="font-medium">Fetching data for “{label}”…</p>
       </div>
     );
-  }
-  if (error) {
+
+  if (error)
     return (
       <Alert variant="destructive">
         <AlertTriangle className="h-5 w-5" />
@@ -58,51 +63,39 @@ function StatusBanner({
         <AlertDescription>{error}</AlertDescription>
       </Alert>
     );
-  }
+
   return null;
 }
 
-function NoDataBanner({
-  loading,
-  error,
-  queried,
-}: {
-  loading: boolean;
-  error: string | null;
-  queried: boolean;
-}) {
-  if (loading || error || queried) return null;
+function AwaitBanner({ firstQueryDone }: { firstQueryDone: boolean }) {
+  if (firstQueryDone) return null;
   return (
-    <Alert className="bg-blue-50 border-blue-200">
-      <InfoIcon className="h-5 w-5 text-blue-600" />
-      <AlertTitle>No Data</AlertTitle>
-      <AlertDescription>
-        Enter a company name or email domain, then click an action.
-      </AlertDescription>
-    </Alert>
+    <div className="flex flex-col items-center justify-center h-full text-gray-500">
+      Awaiting your info
+    </div>
   );
 }
 
 /* ───── main component ───── */
 export default function Home() {
-  /* inputs */
+  /* form inputs */
   const [company, setCompany] = useState("");
   const [domain, setDomain] = useState("");
 
-  /* chart state */
+  /* chart + state */
   const [chartData, setChartData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
 
-  /* track if at least one query executed */
-  const queried = label !== "";
+  const firstQueryDone = label !== "";
 
   /* generic fetch */
   async function run(path: string, body: Record<string, unknown>) {
     setLoading(true);
     setError(null);
     setChartData([]);
+
     try {
       const res = await fetch(path, {
         method: "POST",
@@ -126,17 +119,17 @@ export default function Home() {
     run("/api/monthly", { keyword: company });
   };
 
-  const handleCredentials = () => {
+  const handleCreds = () => {
     if (!domain) return;
     setLabel(domain);
     run("/api/credentials", { domain });
   };
 
-  /* JSX */
+  /* ───── JSX ───── */
   return (
     <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8">
       <Card className="max-w-7xl mx-auto border-0 shadow-sm">
-        {/* ─ header ─ */}
+        {/* header */}
         <CardHeader className="border-b pb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-full bg-gray-900 text-white">
@@ -144,7 +137,7 @@ export default function Home() {
             </div>
             <div>
               <CardTitle className="text-3xl font-extrabold text-gray-800">
-                Threat Intelligence Dashboard
+                See Your Company’s Exposure
               </CardTitle>
               <CardDescription className="text-gray-500">
                 Deep &amp; Dark Web Insights
@@ -153,12 +146,11 @@ export default function Home() {
           </div>
         </CardHeader>
 
-        {/* ─ content ─ */}
+        {/* content */}
         <CardContent className="p-0">
           <div className="flex flex-col lg:flex-row">
             {/* left 33 % */}
             <div className="lg:w-1/3 w-full p-6 space-y-6 border-r">
-              {/* company name */}
               <div className="space-y-2">
                 <label className="block text-sm font-semibold">Company Name</label>
                 <Input
@@ -175,11 +167,8 @@ export default function Home() {
                 </Button>
               </div>
 
-              {/* email domain */}
               <div className="space-y-2">
-                <label className="block text-sm font-semibold">
-                  Company Email Domain
-                </label>
+                <label className="block text-sm font-semibold">Company Email Domain</label>
                 <Input
                   placeholder="flashpoint.io"
                   value={domain}
@@ -187,7 +176,7 @@ export default function Home() {
                 />
                 <Button
                   disabled={loading || !domain}
-                  onClick={handleCredentials}
+                  onClick={handleCreds}
                   className="w-full bg-gray-900 hover:bg-gray-800 text-white"
                 >
                   Check Number of Exposed Employee Credentials
@@ -196,14 +185,14 @@ export default function Home() {
             </div>
 
             {/* right 66 % */}
-            <div className="lg:w-2/3 w-full p-6 space-y-6">
+            <div className="lg:w-2/3 w-full p-6 space-y-6 min-h-[420px]">
               <StatusBanner loading={loading} error={error} label={label} />
 
-              {chartData.length > 0 && (
+              {chartData.length > 0 && !loading && (
                 <ThreatChart data={chartData} keyword={label} />
               )}
 
-              <NoDataBanner loading={loading} error={error} queried={queried} />
+              <AwaitBanner firstQueryDone={firstQueryDone} />
             </div>
           </div>
         </CardContent>

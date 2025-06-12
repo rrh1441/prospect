@@ -1,139 +1,236 @@
 "use client";
 
 import { useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Label,
+} from "recharts";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Label } from "recharts";
-import { DownloadIcon, ImageIcon } from "lucide-react";
+import {
+  DownloadIcon,
+  ImageIcon,
+  ExternalLink,
+} from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*                              Typing                                */
+/* ------------------------------------------------------------------ */
+
+interface DataPoint {
+  date: string; // always "YYYY-MM"
+  count: number;
+}
 
 interface ThreatChartProps {
-  data: Array<{ date: string; count: number }>;
+  data: DataPoint[];
   keyword?: string;
 }
 
-interface CustomizedLabelProps {
-  x: number;
-  y: number;
-  value: string | number;
-}
+/* ------------------------------------------------------------------ */
+/*                         Helper Components                          */
+/* ------------------------------------------------------------------ */
 
-const CustomizedLabel = (props: CustomizedLabelProps) => {
-  const { x, y, value } = props;
-  return (
-    <text x={x} y={y} dy={-10} fill="#000" fontSize={12} textAnchor="middle">
+/** Small label printed above each point. Props are optional because Recharts
+ *  instantiates the element with {} at compile-time, then injects real props
+ *  at runtime. */
+type PointLabelProps = {
+  x?: number;
+  y?: number;
+  value?: string | number;
+};
+
+const PointLabel: React.FC<PointLabelProps> = ({ x, y, value }) =>
+  x !== undefined && y !== undefined ? (
+    <text
+      x={x}
+      y={y}
+      dy={-8}
+      fill="#000"
+      fontSize={12}
+      textAnchor="middle"
+    >
       {value}
     </text>
-  );
+  ) : null;
+
+/** Convert "YYYY-MM" → "Jun 24" */
+const formatTick = (ym: string): string => {
+  const [y, m] = ym.split("-");
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    year: "2-digit",
+  });
 };
 
-const formatXAxis = (tickItem: string): string => {
-  const date = new Date(tickItem);
-  return `${date.getMonth() + 1}-${date.getDate()}`;
-};
+/* ------------------------------------------------------------------ */
+/*                          Main Component                            */
+/* ------------------------------------------------------------------ */
 
 export default function ThreatChart({ data, keyword }: ThreatChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
 
-  const exportToPng = (): void => {
-    if (chartRef.current) {
-      const svgElement = chartRef.current.querySelector("svg");
-      if (svgElement) {
-        const svgData = new XMLSerializer().serializeToString(svgElement);
-        const rect = svgElement.getBoundingClientRect();
-        const extraHeight = 40; // Extra space for the keyword header
+  /* ------------- PNG export ------------- */
+  const exportPng = (): void => {
+    const svg = chartRef.current?.querySelector("svg");
+    if (!svg) return;
 
-        // Create a canvas that is as wide as the chart, but taller to allow for a header
-        const canvas = document.createElement("canvas");
-        canvas.width = rect.width;
-        canvas.height = rect.height + extraHeight;
-        const ctx = canvas.getContext("2d");
+    const svgString = new XMLSerializer().serializeToString(svg);
+    const { width, height } = svg.getBoundingClientRect();
+    const headerH = 40;
 
-        if (ctx) {
-          // Fill the entire canvas with white
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height + headerH;
 
-          // If a keyword is provided, draw it at the top center
-          if (keyword) {
-            ctx.font = "16px Arial";
-            ctx.fillStyle = "#000000";
-            ctx.textAlign = "center";
-            ctx.fillText(`Keyword: ${keyword}`, canvas.width / 2, 20);
-          }
-        }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-        const img = new Image();
-        img.onload = () => {
-          // Draw the chart image starting at vertical offset equal to extraHeight
-          ctx?.drawImage(img, 0, extraHeight);
-          const pngFile = canvas.toDataURL("image/png");
-          const downloadLink = document.createElement("a");
-          downloadLink.download = "threat_chart.png";
-          downloadLink.href = pngFile;
-          downloadLink.click();
-        };
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Encode the SVG data to base64
-        img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
-      }
+    if (keyword) {
+      ctx.font = "16px Arial";
+      ctx.fillStyle = "#000";
+      ctx.textAlign = "center";
+      ctx.fillText(`Keyword: ${keyword}`, canvas.width / 2, 20);
     }
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, headerH);
+      const png = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = "threat_chart.png";
+      link.href = png;
+      link.click();
+    };
+    img.src =
+      "data:image/svg+xml;base64," +
+      btoa(unescape(encodeURIComponent(svgString)));
   };
 
-  const exportToCsv = (): void => {
-    const keywordHeader = keyword ? `Keyword: ${keyword}\n` : "";
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      keywordHeader +
-      "Date,Count\n" +
-      data.map((row) => `${row.date},${row.count}`).join("\n");
-    const encodedUri = encodeURI(csvContent);
+  /* ------------- CSV export ------------- */
+  const exportCsv = (): void => {
+    const header = keyword ? `Keyword: ${keyword}\n` : "";
+    const rows = data.map((r) => `${r.date},${r.count}`).join("\n");
+    const blob = new Blob(
+      [`${header}Date,Count\n${rows}`],
+      { type: "text/csv;charset=utf-8;" },
+    );
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "threat_data.csv");
-    document.body.appendChild(link);
+    link.href = url;
+    link.download = "threat_data.csv";
     link.click();
-    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
+  /* ------------- Render ------------- */
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          Deep and Dark Web Mentions {keyword ? `for "${keyword}"` : ""}
+          Deep and Dark Web Mentions{" "}
+          {keyword ? `for “${keyword}”` : ""}
         </CardTitle>
-        <CardDescription>Daily count over last 7 days</CardDescription>
+        <CardDescription>
+          Monthly count over last 12 months
+        </CardDescription>
       </CardHeader>
+
       <CardContent>
-        <div className="h-[400px]" ref={chartRef}>
+        {/* Chart */}
+        <div ref={chartRef} className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 20, right: 30, left: 60, bottom: 10 }}>
+            <LineChart
+              data={data}
+              margin={{ top: 20, right: 30, left: 60, bottom: 60 }}
+            >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tickFormatter={formatXAxis} padding={{ left: 30, right: 30 }}>
-                <Label value="Date" offset={-5} position="insideBottom" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={formatTick}
+                angle={-45}
+                textAnchor="end"
+                interval={0}
+                dy={16}
+                padding={{ left: 20, right: 20 }}
+              >
+                <Label
+                  value="Date"
+                  offset={-5}
+                  position="insideBottom"
+                />
               </XAxis>
               <YAxis>
-                <Label value="Count" angle={-90} position="insideLeft" style={{ textAnchor: "middle" }} />
+                <Label
+                  value="Count"
+                  angle={-90}
+                  position="insideLeft"
+                  dy={-40}
+                />
               </YAxis>
               <Tooltip />
               <Line
                 type="monotone"
                 dataKey="count"
-                stroke="#3b82f6"
+                stroke="#2563eb"
                 strokeWidth={2}
                 dot={{ r: 4 }}
-                label={(props) => <CustomizedLabel {...(props as CustomizedLabelProps)} />}
+                label={<PointLabel />}
+                isAnimationActive={false}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={exportToPng}>
-            <ImageIcon className="mr-2 h-4 w-4" />
+
+        {/* Actions */}
+        <div className="mt-4 flex flex-wrap gap-2 justify-end">
+          <Button
+            variant="outline"
+            onClick={exportPng}
+            className="flex items-center gap-2"
+          >
+            <ImageIcon className="h-4 w-4" />
             Export as PNG
           </Button>
-          <Button variant="outline" onClick={exportToCsv}>
-            <DownloadIcon className="mr-2 h-4 w-4" />
+
+          <Button
+            variant="outline"
+            onClick={exportCsv}
+            className="flex items-center gap-2"
+          >
+            <DownloadIcon className="h-4 w-4" />
             Export as CSV
+          </Button>
+
+          <Button
+            variant="link"
+            asChild
+            className="text-orange-600 hover:text-orange-700 flex items-center gap-1"
+          >
+            <a
+              href="https://www.flashpoint.io/demo/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Do a Deep Dive
+              <ExternalLink className="h-4 w-4" />
+            </a>
           </Button>
         </div>
       </CardContent>
