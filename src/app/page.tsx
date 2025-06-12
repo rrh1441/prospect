@@ -5,25 +5,31 @@ import QueryForm from "@/components/QueryForm";
 import ThreatChart from "@/components/ThreatChart";
 import {
   Card,
-  CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription,
+  CardContent,
 } from "@/components/ui/card";
 import {
   Alert,
-  AlertDescription,
   AlertTitle,
+  AlertDescription,
 } from "@/components/ui/alert";
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
+import {
+  BarChart3,
   InfoIcon,
   AlertTriangle,
   Loader2,
-  BarChart3,
 } from "lucide-react";
 
 interface MonthlyData {
-  date: string; // "YYYY-MM"
+  date: string; // YYYY-MM
   count: number;
 }
 
@@ -31,46 +37,150 @@ interface ApiResponse {
   data: MonthlyData[];
 }
 
-const Home: React.FC = () => {
-  const [chartData, setChartData] = useState<MonthlyData[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+type TabKey = "keyword" | "credentials";
+
+export default function Home() {
+  /* ------------------------------------------------------------------
+   * Generic tab state
+   * ------------------------------------------------------------------ */
+  const [activeTab, setActiveTab] = useState<TabKey>("keyword");
+
+  /* ------------------------------------------------------------------
+   * Keyword tab state
+   * ------------------------------------------------------------------ */
+  const [kwChartData, setKwChartData] = useState<MonthlyData[]>([]);
+  const [kwLoading, setKwLoading] = useState<boolean>(false);
+  const [kwError, setKwError] = useState<string | null>(null);
   const [currentKeyword, setCurrentKeyword] = useState<string>("");
 
-  const handleMonthlySearch = async ({
+  /* ------------------------------------------------------------------
+   * Credentials tab state
+   * ------------------------------------------------------------------ */
+  const [credChartData, setCredChartData] = useState<MonthlyData[]>([]);
+  const [credLoading, setCredLoading] = useState<boolean>(false);
+  const [credError, setCredError] = useState<string | null>(null);
+  const [currentDomain, setCurrentDomain] = useState<string>("");
+
+  /* ------------------------------------------------------------------
+   * Handlers
+   * ------------------------------------------------------------------ */
+  const handleKeywordSearch = async ({
     keyword,
   }: {
     keyword: string;
   }): Promise<void> => {
     setCurrentKeyword(keyword);
-    setLoading(true);
-    setError(null);
-    setChartData([]);
+    setKwLoading(true);
+    setKwError(null);
+    setKwChartData([]);
 
     try {
-      const response = await fetch("/api/monthly", {
+      const res = await fetch("/api/monthly", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keyword }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data. Status=${response.status}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch keyword data (status ${res.status}).`);
       }
 
-      const json: ApiResponse = await response.json();
-      setChartData(json.data);
+      const json: ApiResponse = await res.json();
+      setKwChartData(json.data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred.");
+      setKwError(err instanceof Error ? err.message : "Unknown error.");
     } finally {
-      setLoading(false);
+      setKwLoading(false);
     }
   };
 
+  const handleCredentialSearch = async ({
+    keyword: domain,
+  }: {
+    keyword: string; // QueryForm still returns { keyword }
+  }): Promise<void> => {
+    setCurrentDomain(domain);
+    setCredLoading(true);
+    setCredError(null);
+    setCredChartData([]);
+
+    try {
+      const res = await fetch("/api/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain }),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `Failed to fetch credential data (status ${res.status}).`,
+        );
+      }
+
+      const json: ApiResponse = await res.json();
+      setCredChartData(json.data);
+    } catch (err: unknown) {
+      setCredError(err instanceof Error ? err.message : "Unknown error.");
+    } finally {
+      setCredLoading(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------
+   * Render helpers
+   * ------------------------------------------------------------------ */
+  const renderStatus = (
+    loading: boolean,
+    error: string | null,
+    queryLabel: string,
+  ) => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center space-x-3 text-primary p-4 bg-primary/5 rounded-lg border border-primary/20 animate-pulse">
+          <Loader2 className="animate-spin h-5 w-5" />
+          <p className="font-medium">Fetching data for “{queryLabel}”…</p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <Alert variant="destructive" className="border border-destructive/20">
+          <AlertTriangle className="h-5 w-5" />
+          <AlertTitle className="font-semibold">Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      );
+    }
+
+    return null;
+  };
+
+  const renderNoData = (loading: boolean, error: string | null) => {
+    if (!loading && !error) {
+      return (
+        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+          <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <AlertTitle className="font-semibold text-blue-800 dark:text-blue-300">
+            No Data
+          </AlertTitle>
+          <AlertDescription className="text-blue-700 dark:text-blue-400">
+            Submit a query above to retrieve the last 12 months of results.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+    return null;
+  };
+
+  /* ------------------------------------------------------------------
+   * Main JSX
+   * ------------------------------------------------------------------ */
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
         <Card className="border-0 shadow-lg dark:bg-slate-950">
+          {/* ───────── Header ───────── */}
           <CardHeader className="pb-4 border-b">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-full bg-primary/10 text-primary">
@@ -81,59 +191,64 @@ const Home: React.FC = () => {
                   Threat Intelligence Dashboard
                 </CardTitle>
                 <CardDescription className="text-muted-foreground">
-                  Monthly Deep and Dark Web Results
+                  Monthly Deep &amp; Dark Web Results
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="p-6 space-y-6">
-            <div className="bg-card rounded-lg p-4 border shadow-sm">
-              <QueryForm
-                onSubmit={handleMonthlySearch}
-                placeholder="Enter keyword for monthly search..."
-              />
-            </div>
+          {/* ───────── Content ───────── */}
+          <CardContent className="p-6">
+            <Tabs
+              defaultValue="keyword"
+              value={activeTab}
+              onValueChange={(val) => setActiveTab(val as TabKey)}
+              className="w-full"
+            >
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="keyword">Keyword</TabsTrigger>
+                <TabsTrigger value="credentials">Credentials</TabsTrigger>
+              </TabsList>
 
-            {loading && (
-              <div className="flex items-center justify-center space-x-3 text-primary p-4 bg-primary/5 rounded-lg border border-primary/20 animate-pulse">
-                <Loader2 className="animate-spin h-5 w-5" />
-                <p className="font-medium">
-                  Fetching monthly data for &quot;{currentKeyword}&quot;…
-                </p>
-              </div>
-            )}
+              {/* ─────── Keyword Tab ─────── */}
+              <TabsContent value="keyword" className="space-y-6">
+                <div className="bg-card rounded-lg p-4 border shadow-sm">
+                  <QueryForm
+                    onSubmit={handleKeywordSearch}
+                    placeholder="Enter keyword..."
+                  />
+                </div>
 
-            {error && (
-              <Alert variant="destructive" className="border border-destructive/20">
-                <AlertTriangle className="h-5 w-5" />
-                <AlertTitle className="font-semibold">Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+                {renderStatus(kwLoading, kwError, currentKeyword)}
 
-            {chartData.length > 0 && (
-              <div className="mt-6">
-                <ThreatChart data={chartData} keyword={currentKeyword} />
-              </div>
-            )}
+                {kwChartData.length > 0 && (
+                  <ThreatChart data={kwChartData} keyword={currentKeyword} />
+                )}
 
-            {!loading && !error && chartData.length === 0 && (
-              <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 mt-6">
-                <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                <AlertTitle className="font-semibold text-blue-800 dark:text-blue-300">
-                  No Data
-                </AlertTitle>
-                <AlertDescription className="text-blue-700 dark:text-blue-400">
-                  Enter a keyword above to analyze threat data for the last 12 months.
-                </AlertDescription>
-              </Alert>
-            )}
+                {renderNoData(kwLoading, kwError)}
+              </TabsContent>
+
+              {/* ─────── Credentials Tab ─────── */}
+              <TabsContent value="credentials" className="space-y-6">
+                <div className="bg-card rounded-lg p-4 border shadow-sm">
+                  <QueryForm
+                    onSubmit={handleCredentialSearch}
+                    placeholder="Enter email domain (e.g., example.com)…"
+                  />
+                </div>
+
+                {renderStatus(credLoading, credError, currentDomain)}
+
+                {credChartData.length > 0 && (
+                  <ThreatChart data={credChartData} keyword={currentDomain} />
+                )}
+
+                {renderNoData(credLoading, credError)}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
     </div>
   );
-};
-
-export default Home;
+}
