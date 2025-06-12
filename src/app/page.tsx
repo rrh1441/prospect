@@ -150,9 +150,6 @@ export default function Home() {
                 <CardTitle className="text-3xl font-extrabold text-gray-800">
                   See Your Company’s Exposure
                 </CardTitle>
-                <CardDescription className="text-gray-500">
-                  Deep &amp; Dark Web Insights
-                </CardDescription>
               </div>
             </div>
           </CardHeader>
