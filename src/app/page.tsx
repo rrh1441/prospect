@@ -33,7 +33,7 @@ interface ApiResponse {
 }
 
 /* ───── helper banners ───── */
-function Status({
+function StatusBanner({
   loading,
   error,
   label,
@@ -61,8 +61,17 @@ function Status({
   }
   return null;
 }
-function NoData({ loading, error }: { loading: boolean; error: string | null }) {
-  if (loading || error) return null;
+
+function NoDataBanner({
+  loading,
+  error,
+  queried,
+}: {
+  loading: boolean;
+  error: string | null;
+  queried: boolean;
+}) {
+  if (loading || error || queried) return null;
   return (
     <Alert className="bg-blue-50 border-blue-200">
       <InfoIcon className="h-5 w-5 text-blue-600" />
@@ -81,16 +90,19 @@ export default function Home() {
   const [domain, setDomain] = useState("");
 
   /* chart state */
-  const [chartData, setChart] = useState<MonthlyData[]>([]);
+  const [chartData, setChartData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
 
-  /* generic fetch helper */
+  /* track if at least one query executed */
+  const queried = label !== "";
+
+  /* generic fetch */
   async function run(path: string, body: Record<string, unknown>) {
     setLoading(true);
     setError(null);
-    setChart([]);
+    setChartData([]);
     try {
       const res = await fetch(path, {
         method: "POST",
@@ -99,7 +111,7 @@ export default function Home() {
       });
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
       const json: ApiResponse = await res.json();
-      setChart(json.data);
+      setChartData(json.data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -113,7 +125,8 @@ export default function Home() {
     setLabel(company);
     run("/api/monthly", { keyword: company });
   };
-  const handleCreds = () => {
+
+  const handleCredentials = () => {
     if (!domain) return;
     setLabel(domain);
     run("/api/credentials", { domain });
@@ -123,7 +136,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8">
       <Card className="max-w-7xl mx-auto border-0 shadow-sm">
-        {/* header */}
+        {/* ─ header ─ */}
         <CardHeader className="border-b pb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-full bg-gray-900 text-white">
@@ -140,16 +153,14 @@ export default function Home() {
           </div>
         </CardHeader>
 
-        {/* content */}
+        {/* ─ content ─ */}
         <CardContent className="p-0">
           <div className="flex flex-col lg:flex-row">
-            {/* left 25 % */}
-            <div className="lg:w-1/4 w-full p-6 space-y-6 border-r">
+            {/* left 33 % */}
+            <div className="lg:w-1/3 w-full p-6 space-y-6 border-r">
               {/* company name */}
               <div className="space-y-2">
-                <label className="block text-sm font-semibold">
-                  Company Name
-                </label>
+                <label className="block text-sm font-semibold">Company Name</label>
                 <Input
                   placeholder="Flashpoint"
                   value={company}
@@ -175,9 +186,8 @@ export default function Home() {
                   onChange={(e) => setDomain(e.target.value)}
                 />
                 <Button
-                  variant="secondary"
                   disabled={loading || !domain}
-                  onClick={handleCreds}
+                  onClick={handleCredentials}
                   className="w-full bg-gray-900 hover:bg-gray-800 text-white"
                 >
                   Check Number of Exposed Employee Credentials
@@ -185,15 +195,15 @@ export default function Home() {
               </div>
             </div>
 
-            {/* right 75 % */}
-            <div className="lg:w-3/4 w-full p-6 space-y-6">
-              <Status loading={loading} error={error} label={label} />
+            {/* right 66 % */}
+            <div className="lg:w-2/3 w-full p-6 space-y-6">
+              <StatusBanner loading={loading} error={error} label={label} />
 
               {chartData.length > 0 && (
                 <ThreatChart data={chartData} keyword={label} />
               )}
 
-              <NoData loading={loading} error={error} />
+              <NoDataBanner loading={loading} error={error} queried={queried} />
             </div>
           </div>
         </CardContent>
