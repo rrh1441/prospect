@@ -73,7 +73,7 @@ function buildPayload(
     query:
       `+domain:("${domain}") ` +
       `+basetypes:(credential-sighting) ` +
-      `+breach.first_observed_at.timestamp:[${startEpoch} TO ${endEpoch}]`,
+      `+first_observed_at.timestamp:[${startEpoch} TO ${endEpoch}]`,
     sort: ["breach.first_observed_at.timestamp:desc"],
   };
 }
