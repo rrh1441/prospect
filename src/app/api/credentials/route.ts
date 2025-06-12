@@ -1,161 +1,92 @@
 // ────────────────────────────────────────────────────────────────
-// FILE: src/app/api/credentials/route.ts
-// DESCRIPTION: Return the last 12 full-month counts of credential
-//              sightings for a supplied email domain.
-// ENV VARS:
-//   • CREDENTIALS_API_URL   – Flashpoint endpoint (non-communities)
-//   • THREAT_API_KEY   – API token
+// Credentials monthly count route
 // ────────────────────────────────────────────────────────────────
-
 import { NextResponse } from "next/server";
 
-interface MonthRange {
-  start: string; // ISO 8601 date-time, inclusive (00:00:00Z)
-  end: string;   // ISO 8601 date-time, inclusive (23:59:59Z)
-  label: string; // YYYY-MM for frontend display
-}
+interface MonthRange { start: string; end: string; label: string; }
+interface MonthlyResult { date: string; count: number; }
 
-interface MonthlyResult {
-  date: string;  // YYYY-MM
-  count: number; // total credential-sighting hits
-}
-
-/**
- * Return the last 12 *complete* months (excluding the current month)
- * in chronological order.
- */
-function getLast12MonthsExcludingCurrent(): MonthRange[] {
+/* → last 12 fully-closed months, oldest → newest */
+function months(): MonthRange[] {
+  const out: MonthRange[] = [];
   const now = new Date();
-  now.setUTCDate(1);
-  now.setUTCHours(0, 0, 0, 0);          // first day of current month 00:00Z
-
-  const months: MonthRange[] = [];
-
-  for (let i = 1; i <= 12; i += 1) {
-    const temp = new Date(now);
-    temp.setUTCMonth(temp.getUTCMonth() - i);
-
-    const y = temp.getUTCFullYear();
-    const m = temp.getUTCMonth();       // 0-based
-
-    const startDate = new Date(Date.UTC(y, m, 1));
-    const endDate = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59));
-
-    const start = startDate.toISOString();   // e.g. 2024-05-01T00:00:00.000Z
-    const end   = endDate.toISOString();     // e.g. 2024-05-31T23:59:59.000Z
-    const label = `${y}-${String(m + 1).padStart(2, "0")}`;
-
-    months.push({ start, end, label });
+  now.setUTCDate(1); now.setUTCHours(0, 0, 0, 0);
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(now);
+    d.setUTCMonth(d.getUTCMonth() - i);
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth();
+    const s = new Date(Date.UTC(y, m, 1));
+    const e = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59));
+    out.push({
+      start: s.toISOString(),
+      end:   e.toISOString(),
+      label: `${y}-${String(m + 1).padStart(2, "0")}`,
+    });
   }
-
-  return months.reverse();
+  return out.reverse();
 }
 
-/**
- * Build the Flashpoint non-communities search payload for one month.
- * Sort is irrelevant because we request size 0, but kept for completeness.
- */
-function buildPayload(
-  domain: string,
-  startIso: string,
-  endIso: string,
-): unknown {
-  // Convert ISO timestamps to Unix epoch seconds for Lucene range query.
-  const startEpoch = Math.floor(new Date(startIso).getTime() / 1000);
-  const endEpoch   = Math.floor(new Date(endIso).getTime()   / 1000);
+/* choose date field (env override allowed) */
+const DATE_FIELD =
+  process.env.CRED_DATE_FIELD?.trim() ||
+  "breach.first_observed_at.timestamp";
 
+/* build FP search payload */
+function payload(domain: string, start: string, end: string) {
+  const from = Math.floor(new Date(start).getTime() / 1000);
+  const to   = Math.floor(new Date(end).getTime()   / 1000);
   return {
-    // We only want the aggregated total; no documents returned.
     size: 0,
-    // Lucene string:
-    //  +domain:("example.com") +basetypes:(credential-sighting)
-    //  +breach.first_observed_at.timestamp:[START TO END]
     query:
       `+domain:("${domain}") ` +
       `+basetypes:(credential-sighting) ` +
-      `+first_observed_at.timestamp:[${startEpoch} TO ${endEpoch}]`,
-    sort: ["breach.first_observed_at.timestamp:desc"],
+      `+${DATE_FIELD}:[${from} TO ${to}]`,
+    sort: [`${DATE_FIELD}:desc`],
   };
 }
 
-/**
- * Perform the POST request to Flashpoint and extract the `hits.total` count.
- */
-async function fetchMonthlyTotal(
-  domain: string,
-  startIso: string,
-  endIso: string,
-): Promise<number> {
+async function total(domain: string, s: string, e: string) {
   const url = process.env.CREDENTIALS_API_URL;
   const key = process.env.THREAT_API_KEY;
+  if (!url || !key) throw new Error("API url/key missing");
 
-  if (!url || !key) {
-    throw new Error("CREDENTIALS_API_URL or THREAT_API_KEY is undefined");
-  }
-
-  const res = await fetch(url, {
+  const r = await fetch(url, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
     },
-    body: JSON.stringify(buildPayload(domain, startIso, endIso)),
+    body: JSON.stringify(payload(domain, s, e)),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(
-      `Flashpoint ${res.status} for ${domain} ${startIso}—${endIso}: ${text}`,
-    );
-  }
-
-  interface FlashpointResponse {
-    hits?: { total?: number };
-  }
-
-  const data: FlashpointResponse = await res.json();
-  return data.hits?.total ?? 0;
+  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  const j = (await r.json()) as { hits?: { total?: number } };
+  return j.hits?.total ?? 0;
 }
 
-/* ------------------------------------------------------------------ */
-/*                       Next.js Route Handler                        */
-/* ------------------------------------------------------------------ */
-
-export async function POST(request: Request): Promise<NextResponse> {
+/* ───────── route handler ───────── */
+export async function POST(req: Request) {
   try {
-    const { domain } = (await request.json()) as { domain?: string };
-
+    const { domain } = (await req.json()) as { domain?: string };
     if (!domain) {
-      return NextResponse.json(
-        { error: "Missing 'domain' in request body." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing 'domain'" }, { status: 400 });
     }
+    const d = domain.trim().toLowerCase();
 
-    const months = getLast12MonthsExcludingCurrent();
     const results: MonthlyResult[] = [];
-
-    for (const { start, end, label } of months) {
+    for (const { start, end, label } of months()) {
       try {
-        const count = await fetchMonthlyTotal(domain, start, end);
-        results.push({ date: label, count });
-      } catch (err) {
-        console.error(`Error fetching ${domain} for ${label}:`, err);
+        results.push({ date: label, count: await total(d, start, end) });
+      } catch (e) {
+        console.error(`FP error ${d} ${label}`, e);
         results.push({ date: label, count: 0 });
       }
-
-      // Minimal throttle to respect Flashpoint rate limits.
-      // Adjust if you see 429s.
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 250)); // throttle
     }
-
-    return NextResponse.json({ data: results }, { status: 200 });
-  } catch (err) {
-    console.error("Credential-count API error:", err);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ data: results });
+  } catch (e) {
+    console.error("credentials route error", e);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
