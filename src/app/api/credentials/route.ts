@@ -4,7 +4,7 @@
 //              sightings for a supplied email domain.
 // ENV VARS:
 //   • CREDENTIALS_API_URL   – Flashpoint endpoint (non-communities)
-//   • CREDENTIALS_API_KEY   – API token
+//   • THREAT_API_KEY   – API token
 // ────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
@@ -87,10 +87,10 @@ async function fetchMonthlyTotal(
   endIso: string,
 ): Promise<number> {
   const url = process.env.CREDENTIALS_API_URL;
-  const key = process.env.CREDENTIALS_API_KEY;
+  const key = process.env.THREAT_API_KEY;
 
   if (!url || !key) {
-    throw new Error("CREDENTIALS_API_URL or CREDENTIALS_API_KEY is undefined");
+    throw new Error("CREDENTIALS_API_URL or THREAT_API_KEY is undefined");
   }
 
   const res = await fetch(url, {
