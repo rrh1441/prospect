@@ -19,8 +19,8 @@ import {
 import {
   Loader2,
   AlertTriangle,
-  BarChart3,
 } from "lucide-react";
+import Image from "next/image";
 
 /* ------------------------------------------------------------------ */
 /*                                Types                               */
@@ -160,7 +160,7 @@ export default function Home() {
           <CardHeader className="border-b pb-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-full bg-gray-900 text-white">
-                <BarChart3 className="h-5 w-5" />
+                <Image src="/logo.png" alt="Logo" width={20} height={20} />
               </div>
               <CardTitle className="text-3xl font-extrabold text-gray-800">
                 Threat Snapshot by Flashpoint
