@@ -151,7 +151,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>See Your Company&#39;s Exposure</title>
+        <title>Flashpoint Threat Snapshot</title>
       </Head>
 
       <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8">
