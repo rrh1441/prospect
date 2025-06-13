@@ -1,34 +1,37 @@
 // ────────────────────────────────────────────────────────────────
-// Monthly compromised-credential counts for an affected domain
-// Flashpoint Identity-Intelligence   /analysis  +  /analysis/scroll
-//
-// ENV VARS
-//   CUSTOMER_API_URL – FULL analysis URL
-//        e.g. https://api.flashpoint.io/identity-intelligence/v1/analysis
-//   THREAT_API_KEY   – Bearer token
+// Monthly credential-sighting totals for an affected domain
+// Identity-Intelligence  /analysis  +  /analysis/scroll
+// Short-circuits when results fall outside the last 12 calendar
+// months (UTC), so it stops paging early.
+// ENV:
+//   CUSTOMER_API_URL  – full analysis URL
+//   THREAT_API_KEY    – Bearer token
 // ────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
 
 /* ---------- helper types ---------- */
-
 interface MonthRange { start: string; end: string; label: string; }
 interface MonthlyResult { date: string; count: number; }
 
+interface AnalysisCred {
+  breach?: { first_observed_at?: { "date-time"?: string } };
+}
+interface KeyBlock { results?: AnalysisCred[]; }
 interface AnalysisPage {
   num_results?: number;
   scroll_id?: string;
+  results?: KeyBlock[];
 }
 
-/* ---------- date helpers ---------- */
-
+/* ---------- compute last 12 complete months ---------- */
 function last12Months(): MonthRange[] {
   const out: MonthRange[] = [];
   const now = new Date();
   now.setUTCDate(1);
   now.setUTCHours(0, 0, 0, 0);
 
-  for (let i = 1; i <= 12; i++) {
+  for (let i = 1; i <= 12; i += 1) {
     const d = new Date(now);
     d.setUTCMonth(d.getUTCMonth() - i);
     const y = d.getUTCFullYear();
@@ -41,19 +44,21 @@ function last12Months(): MonthRange[] {
   }
   return out.reverse();
 }
+const MONTHS          = last12Months();
+const EARLIEST_ISO    = MONTHS[0].start;              // oldest boundary
+const EARLIEST_MS     = new Date(EARLIEST_ISO).getTime();
+const LATEST_ISO      = MONTHS[MONTHS.length - 1].end;
 
-/* ---------- constant URLs ---------- */
-
+/* ---------- constants ---------- */
 const ANALYSIS_URL =
   process.env.CUSTOMER_API_URL ??
   "https://api.flashpoint.io/identity-intelligence/v1/analysis";
 const SCROLL_URL = `${ANALYSIS_URL}/scroll`;
 const API_KEY    = process.env.THREAT_API_KEY;
+if (!API_KEY) throw new Error("THREAT_API_KEY undefined");
 
-/* ---------- tiny fetch wrapper ---------- */
-
+/* ---------- minimal fetch wrapper ---------- */
 async function fpPost<T>(url: string, body: unknown): Promise<T> {
-  if (!API_KEY) throw new Error("THREAT_API_KEY undefined");
   const r = await fetch(url, {
     method: "POST",
     headers: {
@@ -67,33 +72,59 @@ async function fpPost<T>(url: string, body: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
-/* ---------- count one month ---------- */
+/* ---------- retrieve one year of creds, bucket locally ---------- */
+async function fetchYear(domain: string): Promise<Map<string, number>> {
+  /* init counts map with zeros */
+  const counts = new Map<string, number>(
+    MONTHS.map(({ label }) => [label, 0]),
+  );
 
-async function monthTotal(domain: string, start: string, end: string): Promise<number> {
-  const first = await fpPost<AnalysisPage>(
+  /* internal helper – returns true if we should continue scrolling */
+  const processPage = (page: AnalysisPage): boolean => {
+    let keepScrolling = true;
+
+    page.results?.forEach((kb) =>
+      kb.results?.forEach((cred) => {
+        const ts = cred.breach?.first_observed_at?.["date-time"];
+        if (!ts) return;
+
+        const tsMs = new Date(ts).getTime();
+        if (tsMs < EARLIEST_MS) keepScrolling = false;
+
+        const label = ts.slice(0, 7); // YYYY-MM
+        if (counts.has(label)) {
+          counts.set(label, (counts.get(label) ?? 0) + 1);
+        }
+      }),
+    );
+
+    return keepScrolling && Boolean(page.scroll_id);
+  };
+
+  /* first request */
+  let page = await fpPost<AnalysisPage>(
     `${ANALYSIS_URL}?page_size=100&scroll=true`,
     {
       type: "affected_domain",
       keys: [domain],
       filters: {
-        "breach.first_observed_at.date-time": { gte: start, lte: end },
+        "breach.first_observed_at.date-time": { gte: EARLIEST_ISO, lte: LATEST_ISO },
       },
     },
   );
 
-  let total    = first.num_results ?? 0;
-  let scrollId = first.scroll_id;
+  /* handle first page */
+  let keep = processPage(page);
 
-  while (scrollId) {
-    const page = await fpPost<AnalysisPage>(SCROLL_URL, { scroll_id: scrollId });
-    total    += page.num_results ?? 0;
-    scrollId  = page.scroll_id;
+  /* scroll pages until cutoff reached */
+  while (keep) {
+    page = await fpPost<AnalysisPage>(SCROLL_URL, { scroll_id: page.scroll_id });
+    keep = processPage(page);
   }
-  return total;
+  return counts;
 }
 
-/* ---------- Next.js route handler ---------- */
-
+/* ---------- route handler ---------- */
 export async function POST(req: Request) {
   try {
     const { domain } = (await req.json()) as { domain?: string };
@@ -102,20 +133,16 @@ export async function POST(req: Request) {
     }
     const clean = domain.trim().toLowerCase();
 
-    const results: MonthlyResult[] = [];
-    for (const { start, end, label } of last12Months()) {
-      try {
-        results.push({ date: label, count: await monthTotal(clean, start, end) });
-      } catch (e) {
-        console.error(`Flashpoint  error  ${clean}  ${label}`, e);
-        results.push({ date: label, count: 0 });
-      }
-      await new Promise((r) => setTimeout(r, 250)); // gentle throttle
-    }
+    const counts = await fetchYear(clean);
 
-    return NextResponse.json({ data: results });
+    const data: MonthlyResult[] = MONTHS.map(({ label }) => ({
+      date: label,
+      count: counts.get(label) ?? 0,
+    }));
+
+    return NextResponse.json({ data });
   } catch (e) {
-    console.error("credential-analysis route error", e);
+    console.error("credentials route error", e);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
