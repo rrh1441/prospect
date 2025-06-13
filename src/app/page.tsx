@@ -163,7 +163,7 @@ export default function Home() {
                 <BarChart3 className="h-5 w-5" />
               </div>
               <CardTitle className="text-3xl font-extrabold text-gray-800">
-                See Your Company’s Exposure
+                Threat Snapshot by Flashpoint
               </CardTitle>
             </div>
           </CardHeader>
