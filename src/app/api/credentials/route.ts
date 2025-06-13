@@ -1,11 +1,16 @@
 // ────────────────────────────────────────────────────────────────
-// Monthly credential-sighting counts for an affected domain
-// using Flashpoint Identity-Intelligence /analysis endpoint.
+// Monthly compromised-credential counts for an affected domain
+// Flashpoint Identity-Intelligence   /analysis  +  /analysis/scroll
+//
+// ENV VARS
+//   CUSTOMER_API_URL – FULL analysis URL
+//        e.g. https://api.flashpoint.io/identity-intelligence/v1/analysis
+//   THREAT_API_KEY   – Bearer token
 // ────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
 
-/* ───────── types ───────── */
+/* ---------- helper types ---------- */
 
 interface MonthRange { start: string; end: string; label: string; }
 interface MonthlyResult { date: string; count: number; }
@@ -15,13 +20,14 @@ interface AnalysisPage {
   scroll_id?: string;
 }
 
-/* ───────── helpers ───────── */
+/* ---------- date helpers ---------- */
 
 function last12Months(): MonthRange[] {
   const out: MonthRange[] = [];
   const now = new Date();
   now.setUTCDate(1);
   now.setUTCHours(0, 0, 0, 0);
+
   for (let i = 1; i <= 12; i++) {
     const d = new Date(now);
     d.setUTCMonth(d.getUTCMonth() - i);
@@ -36,15 +42,19 @@ function last12Months(): MonthRange[] {
   return out.reverse();
 }
 
-const BASE_URL =
-  process.env.CUSTOMER_API_URL ??
-  "https://api.flashpoint.io/identity-intelligence/v1";
-const API_KEY = process.env.THREAT_API_KEY;
+/* ---------- constant URLs ---------- */
 
-/* small wrapper with proper typing */
-async function fpPost<T>(endpoint: string, body: unknown): Promise<T> {
+const ANALYSIS_URL =
+  process.env.CUSTOMER_API_URL ??
+  "https://api.flashpoint.io/identity-intelligence/v1/analysis";
+const SCROLL_URL = `${ANALYSIS_URL}/scroll`;
+const API_KEY    = process.env.THREAT_API_KEY;
+
+/* ---------- tiny fetch wrapper ---------- */
+
+async function fpPost<T>(url: string, body: unknown): Promise<T> {
   if (!API_KEY) throw new Error("THREAT_API_KEY undefined");
-  const r = await fetch(`${BASE_URL}${endpoint}`, {
+  const r = await fetch(url, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -57,11 +67,11 @@ async function fpPost<T>(endpoint: string, body: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
-/* count results for one month */
+/* ---------- count one month ---------- */
+
 async function monthTotal(domain: string, start: string, end: string): Promise<number> {
-  /* first page */
   const first = await fpPost<AnalysisPage>(
-    "/analysis?page_size=100&scroll=true",
+    `${ANALYSIS_URL}?page_size=100&scroll=true`,
     {
       type: "affected_domain",
       keys: [domain],
@@ -71,19 +81,18 @@ async function monthTotal(domain: string, start: string, end: string): Promise<n
     },
   );
 
-  let total = first.num_results ?? 0;
+  let total    = first.num_results ?? 0;
   let scrollId = first.scroll_id;
 
-  /* scroll pages */
   while (scrollId) {
-    const page = await fpPost<AnalysisPage>("/analysis/scroll", { scroll_id: scrollId });
+    const page = await fpPost<AnalysisPage>(SCROLL_URL, { scroll_id: scrollId });
     total    += page.num_results ?? 0;
     scrollId  = page.scroll_id;
   }
   return total;
 }
 
-/* ───────── route handler ───────── */
+/* ---------- Next.js route handler ---------- */
 
 export async function POST(req: Request) {
   try {
@@ -98,15 +107,15 @@ export async function POST(req: Request) {
       try {
         results.push({ date: label, count: await monthTotal(clean, start, end) });
       } catch (e) {
-        console.error(`FP error ${clean} ${label}`, e);
+        console.error(`Flashpoint  error  ${clean}  ${label}`, e);
         results.push({ date: label, count: 0 });
       }
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 250)); // gentle throttle
     }
 
     return NextResponse.json({ data: results });
   } catch (e) {
-    console.error("credential analysis route error", e);
+    console.error("credential-analysis route error", e);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
