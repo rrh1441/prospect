@@ -1,86 +1,90 @@
 // ────────────────────────────────────────────────────────────────
-// FILE: src/app/api/credentials/route.ts
-// PURPOSE: Monthly counts of compromised credentials for an
-//          affected-domain using Flashpoint Identity-Intelligence
-//          analysis endpoint.
-// ENV:
-//   • CUSTOMER_API_URL  – https://api.flashpoint.io/identity-intelligence/v1
-//   • THREAT_API_KEY    – Bearer token
+// Monthly credential-sighting counts for an affected domain
+// using Flashpoint Identity-Intelligence /analysis endpoint.
 // ────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
 
-interface MonthRange {
-  start: string;                 // 2024-05-01T00:00:00Z
-  end:   string;                 // 2024-05-31T23:59:59Z
-  label: string;                 // 2024-05
-}
+/* ───────── types ───────── */
+
+interface MonthRange { start: string; end: string; label: string; }
 interface MonthlyResult { date: string; count: number; }
 
-/* ─── 12 full months, oldest→newest ─── */
+interface AnalysisPage {
+  num_results?: number;
+  scroll_id?: string;
+}
+
+/* ───────── helpers ───────── */
+
 function last12Months(): MonthRange[] {
   const out: MonthRange[] = [];
   const now = new Date();
   now.setUTCDate(1);
   now.setUTCHours(0, 0, 0, 0);
-
   for (let i = 1; i <= 12; i++) {
     const d = new Date(now);
     d.setUTCMonth(d.getUTCMonth() - i);
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth();
-    const start = new Date(Date.UTC(y, m, 1)).toISOString();
-    const end   = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59)).toISOString();
-    out.push({ start, end, label: `${y}-${String(m + 1).padStart(2, "0")}` });
+    out.push({
+      start: new Date(Date.UTC(y, m, 1)).toISOString(),
+      end:   new Date(Date.UTC(y, m + 1, 0, 23, 59, 59)).toISOString(),
+      label: `${y}-${String(m + 1).padStart(2, "0")}`,
+    });
   }
   return out.reverse();
 }
 
-/* ─── single-month total via /analysis + scroll ─── */
-async function monthTotal(domain: string, start: string, end: string): Promise<number> {
-  const base = process.env.CUSTOMER_API_URL || "https://api.flashpoint.io/identity-intelligence/v1";
-  const key  = process.env.THREAT_API_KEY;
-  if (!key) throw new Error("THREAT_API_KEY undefined");
+const BASE_URL =
+  process.env.CUSTOMER_API_URL ??
+  "https://api.flashpoint.io/identity-intelligence/v1";
+const API_KEY = process.env.THREAT_API_KEY;
 
-  const qs = "page_size=100&scroll=true";     // page of 100, start scroll
-  const body = JSON.stringify({
-    type: "affected_domain",
-    keys: [domain],
-    filters: {
-      "breach.first_observed_at.date-time": { gte: start, lte: end },
+/* small wrapper with proper typing */
+async function fpPost<T>(endpoint: string, body: unknown): Promise<T> {
+  if (!API_KEY) throw new Error("THREAT_API_KEY undefined");
+  const r = await fetch(`${BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${API_KEY}`,
     },
+    body: JSON.stringify(body),
   });
+  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  return (await r.json()) as T;
+}
 
-  /* helper to POST */
-  const post = async (url: string, bodyObj: unknown) => {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify(bodyObj),
-    });
-    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
-    return (await r.json()) as any;
-  };
-
+/* count results for one month */
+async function monthTotal(domain: string, start: string, end: string): Promise<number> {
   /* first page */
-  let url  = `${base}/analysis?${qs}`;
-  let resp = await post(url, JSON.parse(body));
+  const first = await fpPost<AnalysisPage>(
+    "/analysis?page_size=100&scroll=true",
+    {
+      type: "affected_domain",
+      keys: [domain],
+      filters: {
+        "breach.first_observed_at.date-time": { gte: start, lte: end },
+      },
+    },
+  );
 
-  let total = resp.num_results ?? 0;
+  let total = first.num_results ?? 0;
+  let scrollId = first.scroll_id;
 
   /* scroll pages */
-  while (resp.scroll_id) {
-    resp = await post(`${base}/analysis/scroll`, { scroll_id: resp.scroll_id });
-    total += resp.num_results ?? 0;
+  while (scrollId) {
+    const page = await fpPost<AnalysisPage>("/analysis/scroll", { scroll_id: scrollId });
+    total    += page.num_results ?? 0;
+    scrollId  = page.scroll_id;
   }
   return total;
 }
 
-/* ─── Next.js route handler ─── */
+/* ───────── route handler ───────── */
+
 export async function POST(req: Request) {
   try {
     const { domain } = (await req.json()) as { domain?: string };
@@ -92,17 +96,17 @@ export async function POST(req: Request) {
     const results: MonthlyResult[] = [];
     for (const { start, end, label } of last12Months()) {
       try {
-        const count = await monthTotal(clean, start, end);
-        results.push({ date: label, count });
+        results.push({ date: label, count: await monthTotal(clean, start, end) });
       } catch (e) {
         console.error(`FP error ${clean} ${label}`, e);
         results.push({ date: label, count: 0 });
       }
-      await new Promise((r) => setTimeout(r, 250)); // throttle
+      await new Promise((r) => setTimeout(r, 250));
     }
+
     return NextResponse.json({ data: results });
   } catch (e) {
-    console.error("cred-analysis route error", e);
+    console.error("credential analysis route error", e);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

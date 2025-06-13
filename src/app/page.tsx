@@ -140,7 +140,7 @@ export default function Home() {
     run(
       "/api/credentials",
       { domain },
-      `Exposed Employee Credentials for “${domain}”`,
+      `Exposed Credentials for “${domain}”`,
       domain,
     );
   };
@@ -209,7 +209,7 @@ export default function Home() {
                       loading ? "bg-gray-900/50" : "bg-gray-900 hover:bg-gray-800"
                     }`}
                   >
-                    Check Number of Exposed Employee Credentials
+                    Check Number of Exposed Credentials
                   </Button>
                 </div>
               </div>
