@@ -83,14 +83,14 @@ function AwaitBanner({ show }: { show: boolean }) {
 export default function Home() {
   /* ---- inputs ---- */
   const [company, setCompany] = useState("");
-  const [domain, setDomain]   = useState("");
+  const [domain, setDomain] = useState("");
 
   /* ---- chart / state ---- */
-  const [chartData,   setChartData]   = useState<MonthlyData[]>([]);
-  const [chartTitle,  setChartTitle]  = useState("");
-  const [keyword,     setKeyword]     = useState("");
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
+  const [chartData, setChartData] = useState<MonthlyData[]>([]);
+  const [chartTitle, setChartTitle] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   /* ---- generic fetch ---- */
   async function run(
@@ -182,11 +182,15 @@ export default function Home() {
                     onChange={(e) => setCompany(e.target.value)}
                   />
                   <Button
-                    disabled={loading || !company}
+                    disabled={loading}
                     onClick={handleMentions}
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                    className={`w-full text-white ${
+                      loading
+                        ? "bg-orange-600/50"
+                        : "bg-orange-600 hover:bg-orange-700"
+                    }`}
                   >
-                    Check Your Companyʼs Deep &amp; Dark Web Mentions
+                    Check Your Companyʼs Deep & Dark Web Mentions
                   </Button>
                 </div>
 
@@ -199,9 +203,11 @@ export default function Home() {
                     onChange={(e) => setDomain(e.target.value)}
                   />
                   <Button
-                    disabled={loading || !domain}
+                    disabled={loading}
                     onClick={handleCreds}
-                    className="w-full bg-gray-900 hover:bg-gray-800 text-white"
+                    className={`w-full text-white ${
+                      loading ? "bg-gray-900/50" : "bg-gray-900 hover:bg-gray-800"
+                    }`}
                   >
                     Check Number of Exposed Employee Credentials
                   </Button>
